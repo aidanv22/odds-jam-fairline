@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fair Line Scanner</title>
+<meta name="description" content="Find positive-EV bets and arbitrage across US sportsbooks by devigging Pinnacle's line, with Kelly stakes and a bet log that tracks closing line value.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 28'%3E%3Cpath d='M3 2H37A1 1 0 0 1 38 3V10A4 4 0 0 0 38 18V25A1 1 0 0 1 37 26H3A1 1 0 0 1 2 25V18A4 4 0 0 0 2 10V3A1 1 0 0 1 3 2Z' fill='%232A46B6'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 40 28" width="40" height="28" aria-hidden="true">
+        <path d="M3 2H37A1 1 0 0 1 38 3V10A4 4 0 0 0 38 18V25A1 1 0 0 1 37 26H3A1 1 0 0 1 2 25V18A4 4 0 0 0 2 10V3A1 1 0 0 1 3 2Z" style="fill: var(--accent)"/>
+        <text x="20" y="18.5" text-anchor="middle" style="fill: var(--accent-ink); font: 700 12px var(--f-display); letter-spacing: 0.5px">FL</text>
+      </svg>
+      <div>
+        <div class="brand-name">Fair Line Scanner</div>
+        <div class="brand-sub">No-vig odds across every book</div>
+      </div>
+    </div>
+    <div class="status" id="status"></div>
+    <button class="btn primary" id="scanBtn" type="button">Scan books</button>
+  </header>
+
+  <div class="layout">
+    <details class="rail" id="settings" open>
+      <summary>Scan settings</summary>
+
+      <div class="set">
+        <h3>Odds data</h3>
+        <div class="field">
+          <label for="apiKey">The Odds API key</label>
+          <div class="keyrow">
+            <input class="inp" id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your key">
+            <button class="btn small" id="keyShow" type="button" aria-label="Show key">Show</button>
+          </div>
+        </div>
+        <p class="note">Free key at <a href="https://the-odds-api.com/#get-access" target="_blank" rel="noopener">the-odds-api.com</a>. It stays in this browser and is only sent to The Odds API.</p>
+        <div class="cost" id="cost"></div>
+      </div>
+
+      <div class="set">
+        <h3>Sports <button class="btn small" id="inSeasonBtn" type="button">Load in-season</button></h3>
+        <div class="chips" id="sportChips"></div>
+      </div>
+
+      <div class="set">
+        <h3>Markets</h3>
+        <div class="chips" id="marketChips"></div>
+      </div>
+
+      <div class="set">
+        <h3>Fair line</h3>
+        <div class="field">
+          <label for="sharp">Sharp book</label>
+          <select class="sel" id="sharp"></select>
+        </div>
+        <label class="check"><input type="checkbox" id="fallback"> Use the consensus of other books when the sharp book has no line</label>
+        <div class="field">
+          <label for="method">Devig method</label>
+          <select class="sel" id="method">
+            <option value="power">Power (default)</option>
+            <option value="multiplicative">Multiplicative</option>
+            <option value="additive">Additive</option>
+            <option value="worst">Worst case (most conservative)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="set">
+        <h3>Books you bet at <span class="hint" id="bookCount"></span></h3>
+        <div class="chips" id="bookChips"></div>
+        <p class="note">Caesars and Fanatics need a paid Odds API plan.</p>
+      </div>
+
+      <div class="set">
+        <h3>Filters</h3>
+        <div class="row2">
+          <div class="field"><label for="minEV">Min edge %</label><input class="inp num" id="minEV" type="number" step="0.5" min="0"></div>
+          <div class="field"><label for="maxOdds">Longest odds</label><input class="inp num" id="maxOdds" type="number" step="50" min="100"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="staleMin">Ignore lines older than</label>
+            <select class="sel" id="staleMin"><option value="3">3 min</option><option value="5">5 min</option><option value="10">10 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="0">Never</option></select></div>
+          <div class="field"><label for="window">Games starting</label>
+            <select class="sel" id="window"><option value="12">Next 12 h</option><option value="24">Next 24 h</option><option value="48">Next 48 h</option><option value="168">Next 7 days</option><option value="all">Any time</option></select></div>
+        </div>
+        <label class="check"><input type="checkbox" id="includeLive"> Include games in progress</label>
+        <div class="field"><label for="format">Odds format</label>
+          <select class="sel" id="format"><option value="american">American (−110)</option><option value="decimal">Decimal (1.91)</option></select></div>
+      </div>
+
+      <div class="set">
+        <h3>Staking</h3>
+        <div class="row2">
+          <div class="field"><label for="bankroll">Bankroll $</label><input class="inp num" id="bankroll" type="number" step="100" min="0"></div>
+          <div class="field"><label for="kelly">Bet size</label>
+            <select class="sel" id="kelly"><option value="1">Full Kelly</option><option value="0.5">½ Kelly</option><option value="0.25">¼ Kelly</option><option value="0.125">⅛ Kelly</option></select></div>
+        </div>
+        <div class="field"><label for="arbStake">Total stake per arbitrage $</label><input class="inp num" id="arbStake" type="number" step="50" min="0"></div>
+      </div>
+
+      <div class="set">
+        <h3>Auto-scan</h3>
+        <div class="field"><label for="auto">Rescan every</label>
+          <select class="sel" id="auto"><option value="0">Off</option><option value="2">2 min</option><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option><option value="30">30 min</option></select></div>
+        <p class="note" id="autoNote"></p>
+        <div class="field"><label for="usState">State for bet links</label><input class="inp" id="usState" maxlength="2" placeholder="e.g. NJ" autocomplete="off"></div>
+      </div>
+
+      <div class="set">
+        <details class="manual">
+          <summary>Load odds manually</summary>
+          <p class="note" style="margin-top:8px">Paste a raw response from the <code>/v4/sports/{sport}/odds</code> endpoint, or choose saved JSON files.</p>
+          <textarea id="pasteBox" spellcheck="false" placeholder='[{"id": "...", "home_team": "...", "bookmakers": [...]}]'></textarea>
+          <div class="btns">
+            <button class="btn small" id="pasteBtn" type="button">Load pasted odds</button>
+            <input type="file" id="fileIn" accept=".json,application/json" multiple>
+          </div>
+          <div class="btns"><button class="btn small" id="sampleBtn" type="button">Back to sample slate</button></div>
+        </details>
+      </div>
+    </details>
+
+    <main>
+      <div class="banner" id="banner" hidden><p id="bannerText"></p><button class="x" id="bannerX" type="button" aria-label="Dismiss">×</button></div>
+      <div class="strip" id="strip"></div>
+      <nav class="tabs" role="tablist" aria-label="Results">
+        <button class="tab" role="tab" id="tab-ev" data-tab="ev" aria-selected="true">Positive EV <span class="count" id="n-ev">0</span></button>
+        <button class="tab" role="tab" id="tab-arb" data-tab="arb" aria-selected="false">Arbitrage <span class="count" id="n-arb">0</span></button>
+        <button class="tab" role="tab" id="tab-screen" data-tab="screen" aria-selected="false">Odds screen</button>
+        <button class="tab" role="tab" id="tab-log" data-tab="log" aria-selected="false">Bet log <span class="count" id="n-log">0</span></button>
+        <button class="tab" role="tab" id="tab-how" data-tab="how" aria-selected="false">How it works</button>
+      </nav>
+      <div class="toolbar" id="toolbar">
+        <div class="chips" id="sportFilter"></div>
+        <select class="sel" id="bookFilter" aria-label="Filter by book"></select>
+        <input class="inp" id="search" type="search" placeholder="Search team" aria-label="Search team">
+      </div>
+
+      <section id="panel-ev" role="tabpanel" aria-labelledby="tab-ev"></section>
+      <section id="panel-arb" role="tabpanel" aria-labelledby="tab-arb" hidden></section>
+      <section id="panel-screen" role="tabpanel" aria-labelledby="tab-screen" hidden></section>
+      <section id="panel-log" role="tabpanel" aria-labelledby="tab-log" hidden></section>
+      <section id="panel-how" role="tabpanel" aria-labelledby="tab-how" hidden>
+        <div class="prose">
+          <section>
+            <h2>Where the fair line comes from</h2>
+            <p>Every two-sided price includes the book's cut. Pinnacle takes bets from sharp players with high limits, so its line is the best public estimate of the true odds. The scanner removes the vig from the sharp book's market (a devig) to get each side's true win probability.</p>
+            <p>Pinnacle at <span class="num">+139 / −154</span> implies 41.8% + 60.6% = 102.4%. The power method shrinks both sides until they sum to 100%, giving the Lakers a 40.5% fair chance, or <span class="num">+147</span>.</p>
+            <p>When the sharp book has no line, the scanner averages the devigged prices of every other book with a full market (at least three), leaving out the book being priced.</p>
+          </section>
+          <section>
+            <h2>Edge, stake and arbitrage</h2>
+            <p><span class="formula">edge = fair win % × decimal odds − 1</span></p>
+            <p>FanDuel's Lakers <span class="num">+160</span> pays 2.60 back per dollar, so 0.405 × 2.60 − 1 = +5.3%. Over many bets that size of edge returns about 5 cents per dollar staked.</p>
+            <p>The stake column uses the Kelly criterion, edge ÷ (decimal odds − 1), scaled down by your Kelly fraction. Quarter Kelly is the common choice because the fair line itself is an estimate.</p>
+            <p>An arbitrage is a set of prices at different books whose implied chances add up to under 100%. Splitting the stake in proportion to 1 ÷ odds returns the same amount whichever side wins.</p>
+          </section>
+          <section>
+            <h2>Run live scans</h2>
+            <p id="runNote">The page opens on a sample slate with invented prices. To scan live odds:</p>
+            <ol>
+              <li>Get a free key at <a href="https://the-odds-api.com/#get-access" target="_blank" rel="noopener">the-odds-api.com</a>. The free plan has 500 credits a month.</li>
+              <li>Paste it under <strong>Odds data</strong> in the settings. It stays in your browser and is only sent to The Odds API.</li>
+              <li>Pick your sports, markets and books, then press <strong>Scan books</strong>.</li>
+            </ol>
+            <p>Running your own copy? Serve the folder over http rather than opening the file directly, because browsers block API calls from files on disk:</p>
+            <div class="cmd"><code id="cmdText">python3 -m http.server 8000</code><button class="btn small" type="button" id="copyCmd">Copy</button></div>
+            <p>Each scan costs one credit per sport per market when you pick ten books or fewer. Four sports with all three markets is 12 credits.</p>
+          </section>
+          <section>
+            <h2>Checking that the fair line works</h2>
+            <p>Log the bets you place. The Bet log compares each price you took with the fair price right before the game started. That gap is closing line value. Bettors who consistently beat the closing line win over time, and it shows after 50 to 100 bets, long before your win/loss record means anything.</p>
+            <p>The log also compares your actual profit with what the fair line expected. If you beat the close but profit lags, that is usually ordinary variance. If you don't beat the close, the edges are disappearing before you bet.</p>
+          </section>
+          <section>
+            <h2>Before you bet</h2>
+            <ul>
+              <li>Edges close quickly. Confirm the price at the book before you place it.</li>
+              <li>Edges over 12% get a <em>Check line</em> tag. They usually mean a stale price, a different line, or a market the feed mislabeled.</li>
+              <li>Pinnacle prices in this feed come from its public site and can lag by a minute or two.</li>
+              <li>A positive-EV bet still loses often. A 5% edge on a +160 underdog loses about 60% of the time; the profit only shows across hundreds of bets.</li>
+              <li>US books limit accounts that consistently beat the closing line.</li>
+            </ul>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="site-foot">
+    <p>Fair Line Scanner is an independent project, not affiliated with OddsJam or The Odds API. Odds data from <a href="https://the-odds-api.com" target="_blank" rel="noopener">The Odds API</a>. Prices change quickly; confirm every line at the book before betting.</p>
+    <p>For information only, not betting or financial advice. Bet only where it's legal for you and you're of legal age. Gambling problem? Call 1-800-GAMBLER.</p>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+
+<script src="assets/engine.js"></script>
+<script src="assets/sample-data.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
