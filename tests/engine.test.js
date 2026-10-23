@@ -77,6 +77,39 @@ test('+EV: consensus fallback when Pinnacle has no line', () => {
   assert.ok(baylor && baylor.ref.kind === 'consensus');
 });
 
+test('Courtside: priced only when picked, +EV against Pinnacle', () => {
+  const now = Date.now();
+  const groups = FL.buildGroups(sampleEvents(now));
+  const isPack = e => e.book === 'courtside' && e.name === 'Green Bay Packers';
+  assert.ok(!FL.findEV(groups, baseCfg(now)).some(e => e.book === 'courtside'), 'Courtside should stay out until picked');
+  const withCs = new Set([...myBooks, 'courtside']);
+  const evs = FL.findEV(groups, { ...baseCfg(now), myBooks: withCs, arbBooks: withCs });
+  const pack = evs.find(isPack);
+  assert.ok(pack, 'Courtside Packers spot missing');
+  assert.strictEqual(pack.bookTitle, 'Courtside');
+  const fair = FL.devig(FL.fullMarket(pack.g, 'pinnacle'), 'power');
+  near(pack.ev, fair[0] * FL.toDec(152) - 1, 1e-9);
+});
+
+test('Courtside: arbitrage leg with theScore Bet', () => {
+  const now = Date.now();
+  const groups = FL.buildGroups(sampleEvents(now));
+  const withCs = new Set([...myBooks, 'courtside']);
+  const seaArb = cfg => FL.findArbs(groups, cfg).find(a => a.g.home === 'Seattle Seahawks' && a.g.type === 'totals');
+  assert.ok(!seaArb(baseCfg(now)));
+  const arb = seaArb({ ...baseCfg(now), myBooks: withCs, arbBooks: withCs });
+  assert.ok(arb);
+  assert.deepStrictEqual(arb.legs.map(l => l.book).sort(), ['courtside', 'espnbet']);
+  near(arb.profit, 1 / (1 / 2.04 + 1 / 2.02) - 1, 1e-9);
+});
+
+test('Courtside: left out of the consensus where it has no line', () => {
+  const now = Date.now();
+  const groups = FL.buildGroups(sampleEvents(now));
+  const baylor = groups.filter(g => g.home === 'Baylor Bears');
+  assert.ok(baylor.length && baylor.every(g => !g.books.courtside));
+});
+
 test('arbitrage: Lions total split across BetMGM and Caesars', () => {
   const now = Date.now();
   const groups = FL.buildGroups(sampleEvents(now));
