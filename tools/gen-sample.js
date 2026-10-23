@@ -2,14 +2,21 @@
 // Times are stored as offsets: t = minutes until start, u = minutes since the market last updated.
 const fs = require('fs');
 
-let seed = 20261023;
-function rnd() { // mulberry32
-  seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
-  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-function gauss(sd) { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+const rnd = mulberry32(20261023);
+// Courtside draws from its own stream so adding it left every other book's sample prices unchanged
+const rndCourtside = mulberry32(5150);
+function gaussFrom(r) {
+  return function (sd) { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+}
+const gauss = gaussFrom(rnd);
 const hex = () => Array.from({ length: 32 }, () => '0123456789abcdef'[Math.floor(rnd() * 16)]).join('');
 
 const BOOKS = [
@@ -29,8 +36,8 @@ function decFromAm(a) { return a > 0 ? 1 + a / 100 : 1 + 100 / -a; }
 const r3 = x => Math.round(x * 1000) / 1000;
 
 // price a market: probs = true probabilities, margin = book hold, sharp = Pinnacle-style precision
-function price(probs, margin, sd, sharp) {
-  let q = probs.map(p => Math.max(0.02, p + gauss(sd)));
+function price(probs, margin, sd, sharp, noise = gauss) {
+  let q = probs.map(p => Math.max(0.02, p + noise(sd)));
   const s = q.reduce((a, b) => a + b, 0);
   q = q.map(p => p / s * (1 + margin));
   return q.map(p => r3(decFromAm(amFromProb(p, !sharp))));
@@ -88,6 +95,31 @@ const events = EVENTS.map(([sk, st, away, home, t, ml, hLine, pHome, total, pOve
   return { id: hex(), sport_key: sk, sport_title: st, t, home_team: home, away_team: away, bookmakers };
 });
 
+// ---- Courtside: sweepstakes pick'em app, priced like a soft book; it doesn't carry the Baylor game ----
+const csNoise = gaussFrom(rndCourtside);
+EVENTS.forEach(([, , , home, , ml, hLine, pHome, total, pOver], i) => {
+  if (home === 'Baylor Bears') return;
+  const ev = events[i], away = ev.away_team;
+  const u = () => Math.round((0.6 + rndCourtside() * 4) * 10) / 10;
+  const markets = [];
+  const mlP = price(ml, ml.length === 3 ? 0.07 : 0.05, 0.012, false, csNoise);
+  const mlNames = ml.length === 3 ? [away, home, 'Draw'] : [away, home];
+  markets.push({ key: 'h2h', u: u(), outcomes: mlNames.map((n, j) => ({ name: n, price: mlP[j] })) });
+  if (hLine !== null) {
+    const sp = price([1 - pHome, pHome], 0.05, 0.01, false, csNoise);
+    markets.push({ key: 'spreads', u: u(), outcomes: [
+      { name: away, price: sp[0], point: -hLine },
+      { name: home, price: sp[1], point: hLine }
+    ] });
+  }
+  const tp = price([pOver, 1 - pOver], 0.05, 0.01, false, csNoise);
+  markets.push({ key: 'totals', u: u(), outcomes: [
+    { name: 'Over', price: tp[0], point: total },
+    { name: 'Under', price: tp[1], point: total }
+  ] });
+  ev.bookmakers.push({ key: 'courtside', title: 'Courtside', markets });
+});
+
 // ---- hand-placed spots so the sample shows each feature ----
 function set(home, book, mkt, name, am, extra) {
   const ev = events.find(e => e.home_team === home);
@@ -108,6 +140,10 @@ set('Oklahoma City Thunder', 'fanatics', 'h2h', 'Denver Nuggets', 230);        /
 set('Baylor Bears', 'hardrockbet', 'spreads', 'Baylor Bears', 115);             // no Pinnacle here: priced off consensus
 set('Arsenal', 'betmgm', 'h2h', 'Draw', 340);                                   // three-way market
 set('Seattle Seahawks', 'espnbet', 'totals', 'Under', 102);
+set('Detroit Lions', 'courtside', 'h2h', 'Green Bay Packers', 152);             // Courtside slow to move its moneyline
+set('Detroit Lions', 'courtside', 'h2h', 'Detroit Lions', -185);
+set('Seattle Seahawks', 'courtside', 'totals', 'Over', 104);                    // Courtside Over + theScore Under = arb
+set('Seattle Seahawks', 'courtside', 'totals', 'Under', -126);
 
 const out = '// Sample slate with invented prices, in The Odds API v4 shape. Regenerate with: node tools/gen-sample.js\n' +
   '// t = minutes until start, u = minutes since the market last updated (rebased to page load).\n' +

@@ -12,6 +12,7 @@ Everything runs in the browser. Each visitor brings their own free key from [The
 - **Arbitrage**: prices across books whose implied chances sum to under 100%, with the stake split that returns the same amount on any result.
 - **Odds screen**: every book side by side for moneylines, spreads and totals, with the best price highlighted and +EV prices marked.
 - **Bet log**: log bets from the EV and arbitrage tabs, capture the fair price before each game starts, grade results from final scores, and compare actual profit with what the fair line expected.
+- **Courtside**: pick Courtside under Books you bet at and its moneylines, spreads and totals are scanned for +EV and arbitrage like any other book (paid Odds API plan; see below).
 - Four devig methods (power, multiplicative, additive, worst case), consensus fallback when Pinnacle has no line, line-age filter, auto-scan, CSV export.
 
 The page opens on a sample slate with invented prices, so it shows how everything works before anyone adds a key.
@@ -53,7 +54,17 @@ Bettors who consistently beat the closing line tend to win over time, and that s
 | Update results (per sport) | 2 credits, games from the last 3 days |
 | Closing snapshots (paid plans) | 10 credits per market per start time |
 
-The free plan has 500 credits a month. Four sports with all three markets is 12 credits per scan, about 40 scans a month. Caesars and Fanatics odds need a paid plan.
+The free plan has 500 credits a month. Four sports with all three markets is 12 credits per scan, about 40 scans a month. Caesars, Fanatics and Courtside odds need a paid plan; on a free key they come back empty, and the page says so after the scan. Picking an eleventh book doubles the cost of each scan.
+
+## Courtside
+
+[Courtside](https://www.courtside.app/) is a mobile sweepstakes pick'em app, not a licensed sportsbook. It hangs moneylines, spreads and totals at American odds, and The Odds API carries them under the bookmaker key `courtside` on paid plans. The scanner treats it like any other soft book:
+
+- Its prices are compared with the devigged Pinnacle line for +EV, and paired with your other books for arbitrage.
+- Picks are made with Courtside Cash rather than cash wagers. The edge, Kelly stake and arbitrage split count one Courtside Cash as $1; redeeming winnings has playthrough and minimums set by Courtside.
+- Courtside isn't offered in every state. Check its terms for where you are.
+- Courtside is mobile only. When the feed has no bet link for a Courtside price, the row shows the price without one; open the app and find the game.
+- The sample slate includes Courtside prices. Pick Courtside under Books you bet at to see a Courtside +EV moneyline and two arbitrages.
 
 ## Project layout
 

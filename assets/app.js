@@ -15,7 +15,7 @@
   var BET_BOOKS = [
     ['draftkings', 'DraftKings'], ['fanduel', 'FanDuel'], ['betmgm', 'BetMGM'], ['williamhill_us', 'Caesars', 1],
     ['espnbet', 'theScore Bet'], ['fanatics', 'Fanatics', 1], ['betrivers', 'BetRivers'], ['hardrockbet', 'Hard Rock Bet'],
-    ['ballybet', 'Bally Bet'], ['betparx', 'betPARX'], ['fliff', 'Fliff'], ['betonlineag', 'BetOnline'], ['bovada', 'Bovada'],
+    ['ballybet', 'Bally Bet'], ['betparx', 'betPARX'], ['fliff', 'Fliff'], ['courtside', 'Courtside', 1], ['betonlineag', 'BetOnline'], ['bovada', 'Bovada'],
     ['mybookieag', 'MyBookie'], ['betus', 'BetUS'], ['lowvig', 'LowVig'], ['novig', 'Novig'], ['prophetx', 'ProphetX'],
     ['kalshi', 'Kalshi'], ['polymarket_us', 'Polymarket US']
   ];
@@ -35,7 +35,7 @@
   var s = loadSettings();
   var st = {
     events: [], groups: [], ev: [], arbs: [], source: 'sample', asOf: Date.now(), quota: null,
-    tab: 'ev', fSport: 'all', fBook: 'all', query: '', screenType: 'h2h', scanning: false, inSeason: null, timer: null,
+    tab: 'ev', fSport: 'all', fBook: 'all', query: '', screenType: 'h2h', scanning: false, inSeason: null, timer: null, paidWarned: '',
     bets: [], viewEV: [], viewArbs: [], logBusy: false, armClose: 0, armDel: null, chart: null
   };
 
@@ -60,6 +60,12 @@
     for (var i = 0; i < all.length; i++) if (all[i][0] === key) return all[i][1];
     for (var g = 0; g < st.groups.length; g++) if (st.groups[g].books[key]) return st.groups[g].books[key].title;
     return key;
+  }
+  // books The Odds API only returns on paid plans (third field in BET_BOOKS)
+  function isPaid(key) { return BET_BOOKS.some(function (b) { return b[0] === key && b[2]; }); }
+  function paidTitles(keys) {
+    var t = keys.map(bookTitle);
+    return t.length < 3 ? t.join(' and ') : t.slice(0, -1).join(', ') + ' and ' + t[t.length - 1];
   }
   function price(d) { return s.format === 'decimal' ? (d > 1 ? d.toFixed(2) : '—') : FL.fmtAm(d); }
   function pct(x, dp) { return (x * 100).toFixed(dp == null ? 1 : dp) + '%'; }
@@ -202,8 +208,19 @@
     rebuild();
     captureCloses();
     if (st.tab === 'log') renderLog();
-    if (errs.length) showBanner('warn', 'Some sports didn’t load: ' + errs.join('; ') + '.');
+    // paid-only books come back empty on a free key without any error, so say so once instead of leaving them blank
+    var seen = {};
+    all.forEach(function (ev) { (ev.bookmakers || []).forEach(function (b) { seen[b.key] = 1; }); });
+    var emptyPaid = all.length ? s.myBooks.filter(function (k) { return isPaid(k) && !seen[k]; }) : [];
+    var paidKey = emptyPaid.join(','), paidMsg = '';
+    if (emptyPaid.length && paidKey !== st.paidWarned) {
+      paidMsg = ' No odds came back from ' + paidTitles(emptyPaid) + '. The Odds API includes ' + (emptyPaid.length === 1 ? 'it' : 'them') +
+        ' only on paid plans, and ' + (emptyPaid.length === 1 ? 'it doesn’t' : 'they don’t') + ' price every sport.';
+    }
+    st.paidWarned = paidKey;
+    if (errs.length) showBanner('warn', 'Some sports didn’t load: ' + errs.join('; ') + '.' + paidMsg);
     else if (!all.length) showBanner('info', 'No games with odds in that window. Try a longer look-ahead or other sports.');
+    else if (paidMsg) showBanner('info', paidMsg.trim());
     else hideBanner();
   }
 
@@ -948,6 +965,9 @@
       return chipHTML('data-bk', b[0], b[1], s.myBooks.indexOf(b[0]) >= 0, b[2] ? '<small>paid</small>' : '');
     }).join('');
     $('#bookCount').textContent = s.myBooks.length + ' picked';
+    var paid = BET_BOOKS.filter(function (b) { return b[2]; }).map(function (b) { return b[0]; });
+    $('#paidNote').textContent = paidTitles(paid) + ' need a paid Odds API plan.' +
+      (s.myBooks.indexOf('courtside') >= 0 ? ' Courtside is a sweepstakes app: picks use Courtside Cash, counted here as $1 each.' : '');
   }
   function renderCost() {
     var c = costPerScan();
